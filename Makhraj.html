@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Makhraj Huruf Interaktif</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0f172a; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between;}
+        .interactive { pointer-events: auto; }
+        
+        /* Glassmorphism panel */
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .arabic-text { font-family: "Amiri", "Traditional Arabic", serif; font-size: 1.5rem; line-height: 2rem; }
+    </style>
+</head>
+<body class="text-white">
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer" class="p-4 md:p-8">
+        <!-- Header -->
+        <div class="glass-panel p-4 rounded-2xl shadow-lg max-w-2xl mx-auto interactive text-center w-full mt-4">
+            <h1 class="text-2xl md:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-cyan-400">
+                Visualisasi 3D: 5 Tempat Makhraj Huruf
+            </h1>
+            <p class="text-slate-300 text-sm md:text-base mt-2">Klik, putar, dan zum pada bebola bercahaya untuk meneroka bahagian makhraj.</p>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="flex flex-col md:flex-row justify-between items-end gap-4 pb-4">
+            
+            <!-- Navigation Buttons -->
+            <div class="glass-panel p-4 rounded-xl flex flex-col gap-2 interactive w-full md:w-64">
+                <h3 class="font-semibold text-emerald-400 border-b border-slate-600 pb-2 mb-2">Pilih Tempat Makhraj:</h3>
+                <button onclick="selectMakhraj('jawf')" class="text-left px-3 py-2 rounded bg-slate-800 hover:bg-blue-600 transition-colors border-l-4 border-blue-400">1. Al-Jawf (Rongga)</button>
+                <button onclick="selectMakhraj('halq')" class="text-left px-3 py-2 rounded bg-slate-800 hover:bg-red-600 transition-colors border-l-4 border-red-400">2. Al-Halq (Kerongkong)</button>
+                <button onclick="selectMakhraj('lisan')" class="text-left px-3 py-2 rounded bg-slate-800 hover:bg-green-600 transition-colors border-l-4 border-green-400">3. Al-Lisan (Lidah)</button>
+                <button onclick="selectMakhraj('syafatain')" class="text-left px-3 py-2 rounded bg-slate-800 hover:bg-yellow-600 transition-colors border-l-4 border-yellow-400">4. Ash-Syafatain (Bibir)</button>
+                <button onclick="selectMakhraj('khaisyum')" class="text-left px-3 py-2 rounded bg-slate-800 hover:bg-purple-600 transition-colors border-l-4 border-purple-400">5. Al-Khaisyum (Hidung)</button>
+            </div>
+
+            <!-- Info Panel -->
+            <div id="info-panel" class="glass-panel p-6 rounded-2xl interactive w-full md:max-w-md hidden transform transition-all duration-300">
+                <div class="flex items-center gap-3 mb-4">
+                    <div id="info-color" class="w-6 h-6 rounded-full shadow-lg"></div>
+                    <h2 id="info-title" class="text-xl md:text-2xl font-bold text-white"></h2>
+                </div>
+                <div class="bg-slate-800/80 rounded-lg p-4 mb-4 text-right">
+                    <p class="text-sm text-slate-400 mb-1 text-left">Huruf-huruf:</p>
+                    <p id="info-letters" class="arabic-text text-emerald-300"></p>
+                </div>
+                <p id="info-desc" class="text-slate-300 leading-relaxed"></p>
+            </div>
+            
+        </div>
+    </div>
+
+    <script>
+        // Data Makhraj
+        const makhrajData = {
+            jawf: { 
+                id: 'jawf', 
+                name: "Al-Jawf (Rongga)", 
+                letters: "ا, و, ي (Mad)", 
+                desc: "Rongga kosong di dalam mulut dan kerongkong. Ia adalah tempat keluarnya huruf-huruf mad (huruf yang dipanjangkan bacaannya).", 
+                color: 0x60a5fa, // Blue
+                pos: [-1.0, 0.5, 0] 
+            },
+            halq: { 
+                id: 'halq', 
+                name: "Al-Halq (Kerongkong)", 
+                letters: "ء, ه, ع, ح, غ, خ", 
+                desc: "Bahagian kerongkong. Terbahagi kepada 3 bahagian: pangkal (bawah), tengah dan hujung (atas) kerongkong.", 
+                color: 0xf87171, // Red
+                pos: [-0.3, -2.5, 0] 
+            },
+            lisan: { 
+                id: 'lisan', 
+                name: "Al-Lisan (Lidah)", 
+                letters: "ق, ك, ج, ش, ي, ض, ل, ن, ر, ط, د, ت, ص, ز, س, ظ, ذ, ث", 
+                desc: "Lidah adalah tempat makhraj paling banyak. Melibatkan pangkal, tengah, tepi, dan hujung lidah yang bersentuhan dengan lelangit atau gigi.", 
+                color: 0x4ade80, // Green
+                pos: [-1.8, -0.4, 0] 
+            },
+            syafatain: { 
+                id: 'syafatain', 
+                name: "Ash-Syafatain (Bibir)", 
+                letters: "ف, و, ب, م", 
+                desc: "Melibatkan penyebutan menggunakan bibir atas dan bibir bawah, samada dirapatkan atau dimuncungkan.", 
+                color: 0xfacc15, // Yellow
+                pos: [-3.8, 0.15, 0] 
+            },
+            khaisyum: { 
+                id: 'khaisyum', 
+                name: "Al-Khaisyum (Hidung)", 
+                letters: "Ghunnah (Dengung)", 
+                desc: "Pangkal hidung bahagian dalam. Ia adalah tempat keluarnya sifat dengung (ghunnah) yang kekal pada huruf Nun (ن) dan Mim (م).", 
+                color: 0xc084fc, // Purple
+                pos: [-1.8, 2.0, 0] 
+            }
+        };
+
+        // Three.js Setup
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0f172a, 0.05);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        // Position camera to see the side profile
+        camera.position.set(0, 0, 15);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxDistance = 30;
+        controls.minDistance = 5;
+
+        // Add Lights
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+        
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 10, 10);
+        scene.add(dirLight);
+
+        const backLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        backLight.position.set(-10, -10, -10);
+        scene.add(backLight);
+
+        // --- DRAWING THE HEAD OUTLINE (Stylized cross-section) ---
+        function createCurve(pointsArr) {
+            const curve = new THREE.CatmullRomCurve3(pointsArr);
+            const tubeGeo = new THREE.TubeGeometry(curve, 64, 0.05, 8, false);
+            const tubeMat = new THREE.MeshPhongMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.4, wireframe: true });
+            const tubeMesh = new THREE.Mesh(tubeGeo, tubeMat);
+            scene.add(tubeMesh);
+            return tubeMesh;
+        }
+
+        // External Head Outline (Facing Left)
+        const outlinePoints = [
+            new THREE.Vector3(0, 5, 0),       // Top head
+            new THREE.Vector3(-2.5, 4.5, 0),  // Forehead top
+            new THREE.Vector3(-3.5, 3, 0),    // Forehead
+            new THREE.Vector3(-3.7, 2, 0),    // Nose bridge
+            new THREE.Vector3(-4.5, 1.5, 0),  // Nose tip
+            new THREE.Vector3(-3.8, 0.8, 0),  // Under nose
+            new THREE.Vector3(-4.0, 0.5, 0),  // Upper lip
+            new THREE.Vector3(-3.7, 0.15, 0), // Mouth opening
+            new THREE.Vector3(-4.0, -0.2, 0), // Lower lip
+            new THREE.Vector3(-4.2, -1, 0),   // Chin
+            new THREE.Vector3(-3, -2, 0),     // Jaw
+            new THREE.Vector3(-2, -4, 0),     // Front neck
+            new THREE.Vector3(-2, -6, 0)      // Base neck
+        ];
+        
+        const backOutlinePoints = [
+            new THREE.Vector3(0, 5, 0),
+            new THREE.Vector3(2.5, 4.5, 0),
+            new THREE.Vector3(3.5, 2, 0),
+            new THREE.Vector3(3, -1, 0),
+            new THREE.Vector3(1, -3, 0),
+            new THREE.Vector3(1, -6, 0)
+        ];
+
+        // Palate / Roof of mouth down to throat
+        const palatePoints = [
+            new THREE.Vector3(-3.7, 0.8, 0),  // Behind upper lip
+            new THREE.Vector3(-2, 1, 0),      // Hard palate
+            new THREE.Vector3(-1, 1.2, 0),    // Soft palate
+            new THREE.Vector3(-0.5, 0.5, 0),  // Back of mouth
+            new THREE.Vector3(-0.5, -2, 0),   // Back throat
+            new THREE.Vector3(-0.5, -6, 0)    // Down pipe
+        ];
+
+        // Tongue shape curving down to front throat
+        const tonguePoints = [
+            new THREE.Vector3(-3.7, -0.2, 0), // Behind lower lip
+            new THREE.Vector3(-2.5, -0.2, 0), // Tongue tip area
+            new THREE.Vector3(-1.5, -0.4, 0), // Tongue middle
+            new THREE.Vector3(-1, -1.0, 0),   // Tongue back
+            new THREE.Vector3(-1.2, -2.5, 0), // Front throat / Epiglottis
+            new THREE.Vector3(-1.2, -6, 0)    // Down pipe
+        ];
+
+        // Nasal Cavity
+        const nasalPoints = [
+            new THREE.Vector3(-3.7, 2, 0),    // Inside nose
+            new THREE.Vector3(-2, 2.2, 0),    // Nasal passage
+            new THREE.Vector3(-1, 1.8, 0),    // Nasal back
+            new THREE.Vector3(-0.5, 0.5, 0)   // Joining throat
+        ];
+
+        createCurve(outlinePoints);
+        createCurve(backOutlinePoints);
+        createCurve(palatePoints);
+        createCurve(tonguePoints);
+        createCurve(nasalPoints);
+
+        // --- ADDING MARKERS (Makhraj Areas) ---
+        const markers = [];
+        const interactableObjects = [];
+
+        function createMarker(data) {
+            // Core Sphere
+            const geo = new THREE.SphereGeometry(0.4, 32, 32);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: data.color, 
+                emissive: data.color,
+                emissiveIntensity: 0.5,
+                transparent: true,
+                opacity: 0.9
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(data.pos[0], data.pos[1], data.pos[2]);
+            
+            // Outer Glow Sphere
+            const glowGeo = new THREE.SphereGeometry(0.6, 32, 32);
+            const glowMat = new THREE.MeshBasicMaterial({
+                color: data.color,
+                transparent: true,
+                opacity: 0.3,
+                blending: THREE.AdditiveBlending
+            });
+            const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+            mesh.add(glowMesh);
+
+            // Add custom data
+            mesh.userData = data;
+            mesh.userData.glowMesh = glowMesh;
+            mesh.userData.baseScale = 1;
+
+            scene.add(mesh);
+            markers.push(mesh);
+            interactableObjects.push(mesh);
+
+            // Point Light to illuminate surrounding tubes
+            const light = new THREE.PointLight(data.color, 1, 4);
+            light.position.copy(mesh.position);
+            scene.add(light);
+        }
+
+        Object.values(makhrajData).forEach(data => createMarker(data));
+
+        // --- INTERACTION LOGIC ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let hoveredObject = null;
+
+        function updateUI(data) {
+            const panel = document.getElementById('info-panel');
+            panel.classList.remove('hidden');
+            
+            // Add a little pop animation
+            panel.style.transform = 'scale(0.95)';
+            setTimeout(() => panel.style.transform = 'scale(1)', 50);
+
+            document.getElementById('info-title').innerText = data.name;
+            document.getElementById('info-letters').innerText = data.letters;
+            document.getElementById('info-desc').innerText = data.desc;
+            
+            // Convert Hex number back to CSS hex string
+            const hexColor = '#' + data.color.toString(16).padStart(6, '0');
+            document.getElementById('info-color').style.backgroundColor = hexColor;
+            document.getElementById('info-color').style.boxShadow = `0 0 15px ${hexColor}`;
+        }
+
+        function onMouseMove(event) {
+            // Normalize mouse coordinates (-1 to +1)
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(interactableObjects);
+
+            if (intersects.length > 0) {
+                document.body.style.cursor = 'pointer';
+                if (hoveredObject !== intersects[0].object) {
+                    // Reset previous hover
+                    if (hoveredObject) {
+                        hoveredObject.userData.glowMesh.scale.set(1, 1, 1);
+                        hoveredObject.material.emissiveIntensity = 0.5;
+                    }
+                    // Apply new hover
+                    hoveredObject = intersects[0].object;
+                    hoveredObject.material.emissiveIntensity = 1.0;
+                }
+            } else {
+                document.body.style.cursor = 'default';
+                if (hoveredObject) {
+                    hoveredObject.userData.glowMesh.scale.set(1, 1, 1);
+                    hoveredObject.material.emissiveIntensity = 0.5;
+                    hoveredObject = null;
+                }
+            }
+        }
+
+        function onClick(event) {
+            if (hoveredObject) {
+                updateUI(hoveredObject.userData);
+                focusCamera(hoveredObject.position);
+            }
+        }
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('click', onClick);
+        
+        // Touch support for mobile
+        window.addEventListener('touchstart', (e) => {
+            if(e.touches.length > 0) {
+                mouse.x = (e.touches[0].clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(e.touches[0].clientY / window.innerHeight) * 2 + 1;
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(interactableObjects);
+                if (intersects.length > 0) {
+                    updateUI(intersects[0].object.userData);
+                    focusCamera(intersects[0].object.position);
+                }
+            }
+        });
+
+        // Global function for buttons
+        window.selectMakhraj = function(id) {
+            const data = makhrajData[id];
+            updateUI(data);
+            
+            // Highlight the mesh
+            markers.forEach(m => {
+                if(m.userData.id === id) {
+                    m.material.emissiveIntensity = 1.0;
+                    focusCamera(m.position);
+                } else {
+                    m.material.emissiveIntensity = 0.5;
+                }
+            });
+        }
+
+        // Smooth camera movement
+        let targetCameraPos = new THREE.Vector3(0, 0, 15);
+        let targetControlsTarget = new THREE.Vector3(0, 0, 0);
+
+        function focusCamera(pos) {
+            // Move camera slightly towards the object but keep back to see it
+            targetControlsTarget.copy(pos);
+            targetCameraPos.set(pos.x, pos.y, 8); 
+        }
+
+        // --- ANIMATION LOOP ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const time = clock.getElapsedTime();
+
+            // Pulse animation for markers
+            markers.forEach((marker, index) => {
+                // Animate outer glow
+                const scale = 1 + Math.sin(time * 3 + index) * 0.15;
+                marker.userData.glowMesh.scale.set(scale, scale, scale);
+                
+                // Add a very slight floating effect
+                marker.position.y += Math.sin(time * 2 + index) * 0.002;
+                
+                // If hovered, pulse stronger
+                if (marker === hoveredObject) {
+                    const hoverScale = 1.2 + Math.sin(time * 8) * 0.1;
+                    marker.scale.set(hoverScale, hoverScale, hoverScale);
+                } else {
+                    marker.scale.lerp(new THREE.Vector3(1, 1, 1), 0.1);
+                }
+            });
+
+            // Slowly rotate scene for a 3D feel if user is not interacting actively
+            scene.rotation.y = Math.sin(time * 0.2) * 0.2;
+
+            // Smoothly move camera if focus changed
+            camera.position.lerp(targetCameraPos, 0.05);
+            controls.target.lerp(targetControlsTarget, 0.05);
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {p
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start animation
+        animate();
+    </script>
+</body>
+</html>
